@@ -4,6 +4,10 @@
 发布者在服务器配置第三方应用，普通用户不填写第三方 Client ID、Secret 或 token。
 支持 Gmail、Google Drive、Google Calendar、GitHub、Microsoft（Outlook）、Slack，均为只读操作。
 
+## 架构
+
+![WorkSwarm Auth 架构图：用户侧桥接客户端、发布者云端授权 broker、平台身份服务和第三方服务](docs/architecture.png)
+
 | 组件 | 职责 |
 |---|---|
 | 服务端 `app / manager / providers / vault / security` | 第三方 OAuth、凭证加密、刷新/撤销、账号隔离、API 验证；强制 OIDC，不接受静态 API Key |
@@ -27,16 +31,6 @@ python3 -m venv .venv
 把生成的客户端 wheel 放进 broker 数据目录的 `client/`，再把市场包上架。用户在市场安装并点击“连接”，
 首次连接会自动下载安装客户端（只需本机有 Python 3.11+）。平台账号可用 Google/GitHub 登录并自动开户，
 见 CLOUD.md 第 5a 节。不用市场时仍可解压 Windows 安装包运行 `Install-WorkSwarm-Auth.cmd`。
-
-## 清理与升级
-
-v0.6 删除了旧本机 broker、第三方本机 OAuth、静态密钥认证、手工 token 导入、旧 Gmail 迁移、
-原生 CLI 卡片补丁和对应启动/验收脚本。删除 `--local` 安装选项以及 `init / mcp / host-*` 等旧命令。
-移除对 psutil/python-dotenv 的直接依赖。客户端发行 ZIP 仅包含 8 个客户端/公共模块，不包含服务器模块。
-
-已有云端服务仍可使用显式 `--home` 指定原数据目录；不会重建旧数据库密钥。
-v0.5 云端平台会话继续兼容原 key/cache 文件。不会自动删除用户已有目录或尚未使用完的凭证。
-升级后需停用旧 WorkSwarm 连接器配置，使用新版安装器生成的云端 MCP 配置。
 
 ## 为什么是 Connector（MCP）而不是 Plugin
 
