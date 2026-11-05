@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+dist/
+.env
+config.env
+vault.key
+*.sqlite3*
+acceptance-report.json
+workswarm-cloud-mcp.json
+cloud.json
+session.enc
+publisher-runtime/
+cloud-releases/
+secrets/
+data/

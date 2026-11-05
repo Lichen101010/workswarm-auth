@@ -1,0 +1,45 @@
+services:
+  broker:
+    build:
+      context: ${WORKSWARM_SOURCE:?Set WORKSWARM_SOURCE to the extracted source directory}
+      dockerfile: deployment/cloud/Dockerfile
+    restart: unless-stopped
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    volumes:
+      - ./config:/config:ro
+      - ./data:/data
+      - ./secrets/vault.key:/run/secrets/vault.key:ro
+    command: []
+    # The source config directory is read-only; the entrypoint below uses a
+    # separate writable vault and mounts the publisher's provider file.
+    entrypoint: ["workswarm-auth", "serve", "--home", "/data", "--listen", "0.0.0.0"]
+    env_file: ./config/config.env
+    environment:
+      WORKSWARM_VAULT_KEY_FILE: /run/secrets/vault.key
+      WORKSWARM_PROVIDER_CONFIG_FILE: /config/providers.json
+      WORKSWARM_REMOTE_CONFIG_FILE: /config/remote.json
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8766/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [backend]
+  proxy:
+    image: ${CADDY_IMAGE:?Set CADDY_IMAGE}
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [backend]
+    depends_on:
+      broker:
+        condition: service_healthy
+networks:
+  backend:
+volumes:
+  caddy_data:
+  caddy_config:
