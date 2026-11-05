@@ -71,20 +71,24 @@
 ## 发布者需要做什么
 
 以下步骤面向部署服务并上架连接器的人。源码包不含已部署的服务地址，连接器包必须用你自己的部署配置生成。
-下面的命令和域名都是示例，第三方应用配置和完整参数见 [CLOUD.md](CLOUD.md)。
+下面的命令和域名都是示例，完整参数见 [CLOUD.md](CLOUD.md)，已验证和尚未验证的范围见 [VALIDATION.md](VALIDATION.md)。
 
 ### 准备
 
-- 一台 Linux 主机，安装 Docker Engine 和 Compose v2，能访问身份系统和第三方服务。
+- 一台 Linux 主机，安装 Docker Engine、Compose v2、Git 和 Python 3.11 或更高版本，能访问身份系统和第三方服务。
 - 一个授权服务域名（如 `auth.company.example`），DNS 指向这台主机，80/443 对外可达。
 - 平台登录二选一：已有的 OIDC 身份系统；或再准备一个域名（如 `login.company.example`），部署附带的 Keycloak。
 - 要启用的第三方服务的开发者账号（Google、GitHub、Microsoft、Slack）。
 
 ### 发布步骤
 
-**1. 安装源码并运行测试**
+**1. 获取源码并运行测试**
+
+把 `<仓库地址>` 换成你拿到的仓库地址，后面的命令都在这个目录下运行：
 
 ```bash
+git clone <仓库地址> workswarm-auth
+cd workswarm-auth
 python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[server,test]'
 .venv/bin/python -m pytest -q
@@ -201,7 +205,14 @@ docker compose -f compose.yaml -f compose.identity.yaml restart broker
 
 **4. 启动服务**
 
-在生成的 `.env` 中设置 `WORKSWARM_SOURCE`（源码绝对路径）；使用附带 Keycloak 时还要设置 `KEYCLOAK_IMAGE`。
+编辑 `/srv/workswarm-auth-runtime/.env`，填写源码的绝对路径；使用附带 Keycloak 时还要填写镜像：
+
+```text
+WORKSWARM_SOURCE=/源码的绝对路径/workswarm-auth
+KEYCLOAK_IMAGE=quay.io/keycloak/keycloak:26.4
+```
+
+Keycloak 需要 25 或更高版本，示例的 26.4 是实测过的版本。生产环境建议固定镜像 digest。
 
 ```bash
 sudo chown -R 10001:10001 /srv/workswarm-auth-runtime/config \
@@ -212,9 +223,34 @@ docker compose -f compose.yaml -f compose.identity.yaml up -d --build
 
 使用已有身份系统时只运行 `docker compose -f compose.yaml up -d --build`。
 
+确认服务已启动。所有容器应为 running 或 healthy，`curl` 应返回 `"ok":true`：
+
+```bash
+docker compose -f compose.yaml -f compose.identity.yaml ps
+curl -sS https://auth.company.example/health
+```
+
+健康检查只说明进程可用，不代表身份系统和第三方 API 已配置正确。启动失败时见“部署排查”。
+
 **5. 开通用户账号**（使用附带 Keycloak 时）
 
-默认由管理员在 Keycloak 创建用户并加入 `workswarm-users` 组。也可以让用户用 Google 或 GitHub 登录，首次登录自动开户。
+Keycloak 没有预置用户，也关闭了公开注册。有两种开通方式。
+
+*方式一：管理员手动建号（适合少量用户）*
+
+1. 查看管理员账号。这条命令会把密码显示在屏幕上，注意周围环境：
+
+   ```bash
+   grep '^KC_BOOTSTRAP_ADMIN_' /srv/workswarm-auth-runtime/.env
+   ```
+
+2. 打开 `https://login.company.example/admin/` 登录，切换到 `workswarm` realm。
+3. 在 **Users** 中新建用户，在 **Groups** 页把用户加入 `workswarm-users`，再在 **Credentials** 页设置初始密码。
+
+不要把管理员账号当普通用户使用。不在 `workswarm-users` 组的用户无法使用连接器。
+
+*方式二：用 Google 或 GitHub 登录，首次登录自动开户（适合用户较多）*
+
 登录用的应用要和第 3 步的应用分开创建：
 
 | 登录方式 | 在哪里创建 | 回调地址 |
@@ -263,7 +299,24 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://auth.company.example/client/wo
 
 **7. 上架**
 
-把连接器包上传到 WorkSwarm Hub，并选择发布范围（见下一节）。
+发布要在 WorkSwarm 客户端里完成，客户端只能发布本机已有的连接器，所以要先把连接器包放进本机。
+不能用“新建自定义连接器”的方式发布：客户端发布自定义连接器时只接受 `npx`、`uvx`、`python`、`python3` 启动命令，而本连接器用的是 `py`，会被拒绝。
+
+1. 在装有 WorkSwarm 的 Windows 上解压连接器包：
+
+   ```powershell
+   Expand-Archive .\workswarm-auth-cloud-market-0.7.2.zip -DestinationPath "$env:USERPROFILE\.jiuwenswarm\agent\workspace\mcp\mcp_hub" -Force
+   ```
+
+2. 完全退出并重启 WorkSwarm，进入 **扩展 → 连接器广场**，搜索 `第三方统一授权`，打开详情页。
+3. 点 **发布**，按提示登录 Hub 账号。
+4. 确认发布名称、展示名称和简介。版本号沿用包内的 `0.7.2`，只能是 `1.0.0` 这样的三段数字或七位小写提交号。
+5. 选择发布范围（见下一节），提交。
+
+提交后客户端只显示“已提交”，不代表已经上架。实际状态要到 Hub 的 **我的上传** 查看。Public 发布审核通过后才会公开展示。
+再次发布时要升版本号，否则会提示该版本已提交过。
+
+这些步骤根据 WorkSwarm 客户端代码整理，界面名称可能随版本变化。
 
 **8. 实机验收**
 
@@ -295,3 +348,62 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://auth.company.example/client/wo
 - **更新客户端**：客户端按版本号缓存，改动后必须升版本号，重新执行第 6、7 步，否则已安装的用户不会更新。只改客户端时不需要重启服务。
 - **更换服务地址**：已安装的用户会继续使用旧地址，需要删除 `%USERPROFILE%\.workswarm-auth-cloud` 后重新登录。第三方应用的回调地址也要同步修改。
 - **保护部署目录**：重新生成 `vault.key` 会导致已保存的凭证无法解密，所以 `publisher_setup.py` 不允许覆盖已有目录。
+
+**备份**
+
+需要备份的内容有：`data/`（连接凭证和审计记录）、`config/`（第三方应用凭证）、`secrets/vault.key`、`.env`，以及 Keycloak 数据库。
+把 `/备份目录` 和 `/另一个备份目录` 换成不同的位置，`data/` 和 `vault.key` 不要放在一起：
+
+```bash
+cd /srv/workswarm-auth-runtime
+C="docker compose -f compose.yaml -f compose.identity.yaml"
+$C stop broker
+sudo tar czf /备份目录/broker-data.tgz data config
+sudo tar czf /另一个备份目录/broker-secrets.tgz secrets .env
+$C exec -T identity-db pg_dump -U keycloak keycloak | gzip > /备份目录/keycloak.sql.gz
+$C start broker
+```
+
+**恢复**
+
+1. 在同一路径解压两个备份（用 `sudo tar xzf`，保留文件属主），然后启动数据库：`$C up -d identity-db`。
+2. 确认 `identity` 还没有启动，用 `gunzip -c /备份目录/keycloak.sql.gz | $C exec -T identity-db psql -U keycloak keycloak` 导入到空数据库。
+3. 运行 `$C up -d`，再用已有账号验证 `auth_status` 和一次 `service_call`。
+
+上述备份和恢复命令未经演练，正式使用前请先在测试机上走一遍。
+
+**升级服务端**
+
+1. 先备份。
+2. 在源码目录运行 `git pull`。
+3. 在部署目录运行 `docker compose -f compose.yaml -f compose.identity.yaml up -d --build`。不要重新运行 `publisher_setup.py`。
+4. 用 `/health` 和一次真实连接确认结果。如果客户端也有改动，升版本号后重新执行第 6、7 步。
+
+修改 `realm.json` 不会影响已有的 realm，已有配置要在 Keycloak 管理台里修改。
+
+### 部署排查
+
+在部署目录运行以下命令，查看容器状态和日志。把日志发给别人前，先检查其中有没有敏感信息：
+
+```bash
+docker compose -f compose.yaml -f compose.identity.yaml ps
+docker compose -f compose.yaml -f compose.identity.yaml logs --tail=100 proxy
+docker compose -f compose.yaml -f compose.identity.yaml logs --tail=100 broker
+docker compose -f compose.yaml -f compose.identity.yaml logs --tail=100 identity
+```
+
+| 现象 | 可能原因和处理 |
+|---|---|
+| 启动时提示 `Set WORKSWARM_SOURCE` 或 `Set an approved Keycloak image` | `.env` 没有填写，见第 4 步 |
+| HTTPS 打不开，`proxy` 日志显示证书申请失败 | 域名没有解析到这台主机，或 80/443 被防火墙拦截 |
+| `identity` 日志提示读取 `realm.json` 时 Permission denied | `realm.json` 权限应为 `0644`，不要改成 `0600` |
+| 访问返回 `Invalid host header` | 访问的域名和 `--public-origin` 不一致 |
+| 客户端报 `cloud_identity_unavailable` | Keycloak 没有启动好，或登录域名无法访问 |
+| 客户端报 `cloud_issuer_mismatch` | 身份系统返回的 issuer 和连接器包里的不一致。确认部署和构建用的是同一份 `cloud.json` |
+| 客户端报 `cloud_session_verification_pending` | Broker 拒绝了平台令牌。确认 Keycloak 为 25 或更高版本、用户在 `workswarm-users` 组；使用已有身份系统时还要检查 audience 和 `sub` |
+| 客户端报 `cloud_login_callback_port_in_use` | 用户电脑的 18766 端口被占用，关闭占用的程序后重试 |
+| 用户连接时下载客户端失败，`/client/` 返回 404 | 没有放客户端包，或包的版本和连接器包不一致，见第 6 步 |
+| `provider_not_configured` 或 `provider_client_secret_required` | 凭证没有录入完整。重新录入后要重启 broker |
+| 服务商页面提示回调地址不匹配（如 `redirect_uri_mismatch`） | 服务商后台登记的地址和第 3 步的表格不完全一致 |
+| Microsoft 同意后授权失败 | 多半是录入了“机密 ID”，要改成客户端密码的“值” |
+| Google 提示无权访问 | 应用处于 Testing 状态，账号没有加入测试用户 |
