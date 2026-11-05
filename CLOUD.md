@@ -38,6 +38,7 @@ python3 -m venv .venv
 该命令生成私有部署目录：`config/`、`data/`、`secrets/vault.key`、`.env`、Compose、
 realm 导入文件及一个不含秘密的 `cloud.json`。输出目录不允许覆盖，防止重建密钥破坏旧凭证。
 整个运行目录不要提交到仓库，也不要给用户。只允许将 `cloud.json` 输入客户端构建器。
+当前用户要对输出目录的上级目录有写权限；没有 `/srv` 的写权限时，换一个有权限的目录，并同步替换后面命令里的路径。
 
 既有身份系统可使用 `--issuer https://identity.company.example/your-realm` 替代
 `--identity-domain`。服务端必须能获取该 issuer 的 discovery/JWKS，JWT 必须为 RS256/ES256。
@@ -130,7 +131,7 @@ broker 单实例单 worker；健康检查只代表进程可用，不代表身份
 输出三个文件：
 
 - `workswarm_auth-0.7.2-py3-none-any.whl`：客户端 wheel，只含客户端模块和公共 profile。
-  **复制到 broker 数据目录的 `client/` 下**（如 `/srv/workswarm-auth-runtime/data/client/`），
+  **复制到 broker 数据目录的 `client/` 下**（命令见本节末尾），
   broker 会在 `https://auth.company.example/client/<文件名>` 公开提供下载（只提供这一类文件）。
 - `workswarm-auth-cloud-market-0.7.2.zip`：市场连接器包。启动命令为 `py -3`，运行内嵌的引导程序
   （源码见 `tools/client_bootstrap.py`）：首次启动从上面的地址下载 wheel，在
@@ -139,6 +140,15 @@ broker 单实例单 worker；健康检查只代表进程可用，不代表身份
 - `workswarm-auth-cloud-windows-0.7.2.zip`：离线/手工安装包，供不用市场的用户使用。
 
 构建器使用固定白名单，不遍历或复制发布者运行目录。市场包并不会部署服务器。
+
+复制 wheel 并确认可以下载。`data/` 已归容器用户所有，所以要用 `sudo`；`client/` 不存在时会自动创建，第二条命令应输出 `200`：
+
+```bash
+sudo install -D -o 10001 -g 10001 -m 0644 \
+  /srv/workswarm-auth-releases/0.7.2/workswarm_auth-0.7.2-py3-none-any.whl \
+  /srv/workswarm-auth-runtime/data/client/workswarm_auth-0.7.2-py3-none-any.whl
+curl -sS -o /dev/null -w '%{http_code}\n' https://auth.company.example/client/workswarm_auth-0.7.2-py3-none-any.whl
+```
 
 ## 5. 用户 Windows 操作（没有 providers.json）
 
@@ -196,7 +206,8 @@ Google 或 GitHub 登录平台，首次登录即自动建号并加入准入组�
 
 - 先在 Google / GitHub 新建 OAuth 应用，回调为 `https://login.company.example/realms/workswarm/broker/google/endpoint`
   （GitHub 把 `google` 换成 `github`）。脚本会打印这两个地址，并隐藏输入 Client ID / Secret。
-- 已有可用的同一 Google 客户端时，可用 `--reuse google=gmail` 从 providers.json 复制凭证（不显示）。
+- 已有可用的同一 Google 客户端时，可用 `--reuse google=gmail` 从 providers.json 复制凭证（不显示）；
+  providers.json 此时已归容器用户所有，需用 `sudo` 运行。用户较多时不建议复用，Google 登录应用要单独放一个项目。
   GitHub OAuth App 只能登记一个回调，需为登录单独建一个 App。
 - 默认开启自动开户（realm 默认组 = `workswarm-users`）：**凡能用对应账号登录的人都会被准入**。
   请用受限的提供方应用把关，例如 Google OAuth 处于 Testing 状态只允许测试用户，或使用 Workspace
@@ -215,7 +226,7 @@ Google 或 GitHub 登录平台，首次登录即自动建号并加入准入组�
 - 发行 ZIP 不包含 providers/remote 配置、环境文件、vault、密钥或真实 token。
 
 单元测试覆盖签名 OIDC 响应、真实 loopback HTTP 回调、实际 broker 路由及模拟第三方 API；
-真实 Keycloak、Docker TLS、Windows WorkSwarm 与六个提供方的实机验收记录见 VALIDATION.md。
+已验证和尚未验证的范围见 VALIDATION.md。
 本版已移除原生连接卡补丁；当前兼容路径为 stdio 桥接工具流程。宿主原生 OAuth 支持需单独接入。
 本机仅用独立 SessionStore 对平台会话做 Fernet 文件加密，不创建 SQLite 或加载服务端 Vault。
 密钥与密文同属当前系统用户，未新增 Windows DPAPI/ACL 隔离。云端存储与审计仍是单实例 SQLite，不声称 HA/KMS/生产安全审查已完成。

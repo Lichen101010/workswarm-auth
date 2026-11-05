@@ -14,7 +14,7 @@
 | 客户端 `cloud / cloud_commands / cloud_mcp / session_store` | 平台 OIDC 登录、浏览器跳转、授权等待/取消和 API 转发；仅缓存自己的平台会话，不建立凭证数据库 |
 | 发布工具 `tools/` | 生成部署配置与不含服务端代码/秘密的 Windows 安装包、市场包 |
 
-详细操作统一见 [CLOUD.md](CLOUD.md)；测试记录见 [VALIDATION.md](VALIDATION.md)。
+详细操作统一见 [CLOUD.md](CLOUD.md)；验证范围见 [VALIDATION.md](VALIDATION.md)。
 
 ## 用户如何使用
 
@@ -102,6 +102,8 @@ python3 -m venv .venv
 
 使用已有身份系统时，把 `--identity-domain` 换成 `--issuer`（对接要求见 CLOUD.md 第 1 节）。
 输出目录含密钥和配置，不要提交到仓库，也不要发给用户。
+
+`--output` 指定的目录不能已存在，当前用户要对它的上级目录有写权限。没有 `/srv` 的写权限时，换一个有权限的目录，并同步替换后面命令里的路径。
 
 **3. 配置第三方服务的 Client ID 和 Secret**
 
@@ -241,9 +243,23 @@ docker compose -f compose.yaml -f compose.identity.yaml up -d --build
 
 | 生成的文件 | 用途 |
 |---|---|
-| `workswarm_auth-0.7.2-py3-none-any.whl` | 复制到 `/srv/workswarm-auth-runtime/data/client/`，并确保 broker 容器用户（uid 10001）可读；用户首次连接时从这里下载 |
+| `workswarm_auth-0.7.2-py3-none-any.whl` | 客户端包，放到服务器上供用户首次连接时下载 |
 | `workswarm-auth-cloud-market-0.7.2.zip` | 上架到 WorkSwarm Hub 的连接器包 |
 | `workswarm-auth-cloud-windows-0.7.2.zip` | 不用市场时的手工安装包，解压后运行 `Install-WorkSwarm-Auth.cmd` |
+
+把客户端包放到服务器上。`data/` 已归容器用户所有，所以要用 `sudo`；`client/` 目录不存在时会自动创建：
+
+```bash
+sudo install -D -o 10001 -g 10001 -m 0644 \
+  /srv/workswarm-auth-releases/0.7.2/workswarm_auth-0.7.2-py3-none-any.whl \
+  /srv/workswarm-auth-runtime/data/client/workswarm_auth-0.7.2-py3-none-any.whl
+```
+
+确认用户能下载，应输出 `200`：
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' https://auth.company.example/client/workswarm_auth-0.7.2-py3-none-any.whl
+```
 
 **7. 上架**
 
