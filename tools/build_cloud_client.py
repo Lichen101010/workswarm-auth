@@ -1,4 +1,4 @@
-"""Build allowlisted artifacts: client wheel, Windows client installer and market connector.
+"""Build allowlisted artifacts: client wheel and market connector.
 
 Server config, env files, vaults, tests and live runtime directories are never
 walked or copied. The only publisher input allowed is the public cloud profile.
@@ -49,9 +49,8 @@ def build(source, profile_path, output):
     profile = CloudProfile.load(profile_path)
     output.mkdir(parents=True, exist_ok=True)
     wheel = output / f"workswarm_auth-{__version__}-py3-none-any.whl"
-    client_zip = output / f"workswarm-auth-cloud-windows-{__version__}.zip"
     market_zip = output / f"workswarm-auth-cloud-market-{__version__}.zip"
-    if wheel.exists() or client_zip.exists() or market_zip.exists():
+    if wheel.exists() or market_zip.exists():
         raise ValueError("cloud_release_exists_choose_another_output")
     public = json.dumps(profile.binding, indent=2) + "\n"
     instructions = (
@@ -60,9 +59,7 @@ def build(source, profile_path, output):
         "client ID, secret or token is needed.\n\n"
         "Install this connector from the market and connect: on first start it downloads the client from "
         + profile.server_url + "/client/ into %LOCALAPPDATA%\\WorkSwarmAuth\\" + __version__ + " and installs it "
-        "into its own virtual environment (needs pip access to PyPI or a mirror); later starts reuse it. "
-        "Without the market, extract the Windows client ZIP and run Install-WorkSwarm-Auth.cmd, then import the "
-        "generated workswarm-cloud-mcp.json.\n\n"
+        "into its own virtual environment (needs pip access to PyPI or a mirror); later starts reuse it.\n\n"
         "Call auth_providers, then auth_connect(provider=...). On first use sign in to the publisher identity service "
         "(or with a linked Google/GitHub account if the publisher enabled it), then consent on the provider's "
         "official page in the same browser. Poll auth_status until authorization=authorized and "
@@ -71,13 +68,6 @@ def build(source, profile_path, output):
         "The cloud service and provider applications must already be deployed by the publisher; the publisher "
         "copies " + wheel.name + " into the broker's client/ directory.\n")
     build_wheel(source, public, wheel)
-    with zipfile.ZipFile(client_zip, "w", zipfile.ZIP_DEFLATED) as archive:
-        for name in ("pyproject.toml", "windows_install.py", "Install-WorkSwarm-Auth.cmd", "CLOUD.md"):
-            archive.write(source / name, "workswarm-auth-cloud/" + name)
-        archive.writestr("workswarm-auth-cloud/README.md", instructions)
-        for name in CLIENT_MODULES:
-            archive.write(source / "src/workswarm_auth" / name, "workswarm-auth-cloud/src/workswarm_auth/" + name)
-        archive.writestr("workswarm-auth-cloud/publisher/cloud.json", public)
     summary = {"zh": "由发布者云端托管 OAuth，用户无需填写第三方凭证；首次连接自动安装客户端（需 Python 3.11+）。",
                "en": "Publisher-hosted OAuth with no end-user provider credentials. The client installs itself on first connect (Python 3.11+ required)."}
     manifest = {"id": "workswarm-auth-cloud", "name": "WorkSwarm Cloud Authorization", "version": __version__,
@@ -91,7 +81,7 @@ def build(source, profile_path, output):
         for name, value in (("manifest.json", manifest), ("mcp.json", mcp)):
             archive.writestr("workswarm-auth-cloud/" + name, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
         archive.writestr("workswarm-auth-cloud/README.md", instructions)
-    return {"client_wheel": str(wheel), "client_zip": str(client_zip), "market_zip": str(market_zip),
+    return {"client_wheel": str(wheel), "market_zip": str(market_zip),
             "published": False, "server_deployment_required": True}
 
 

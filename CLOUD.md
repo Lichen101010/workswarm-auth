@@ -118,7 +118,7 @@ broker 单实例单 worker；健康检查只代表进程可用，不代表身份
 切勿把这个管理员账号当普通用户账号使用。后续改 realm 导入 JSON 不会自动更新已有 realm，
 应通过管理台/受控管理员操作变更并重新验收。
 
-## 4. 生成用户发行包和市场包
+## 4. 生成客户端包和市场包
 
 发布者在装有源码包的机器上运行：
 
@@ -128,7 +128,7 @@ broker 单实例单 worker；健康检查只代表进程可用，不代表身份
   --output /srv/workswarm-auth-releases/0.7.2
 ```
 
-输出三个文件：
+输出两个文件：
 
 - `workswarm_auth-0.7.2-py3-none-any.whl`：客户端 wheel，只含客户端模块和公共 profile。
   **复制到 broker 数据目录的 `client/` 下**（命令见本节末尾），
@@ -137,7 +137,6 @@ broker 单实例单 worker；健康检查只代表进程可用，不代表身份
   （源码见 `tools/client_bootstrap.py`）：首次启动从上面的地址下载 wheel，在
   `%LOCALAPPDATA%\WorkSwarmAuth\0.7.2` 建虚拟环境并安装，之后直接启动桥接程序。
   安装输出全部写到 stderr，桥接程序直接继承 stdin/stdout，不经过任何 shell 转码。
-- `workswarm-auth-cloud-windows-0.7.2.zip`：离线/手工安装包，供不用市场的用户使用。
 
 构建器使用固定白名单，不遍历或复制发布者运行目录。市场包并不会部署服务器。
 
@@ -156,8 +155,6 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://auth.company.example/client/wo
 2. 在 WorkSwarm 市场安装本连接器并点击“连接”。首次连接自动下载并安装客户端（约 20–60 秒，
    需能访问 PyPI 或镜像）；之后秒级启动。云端配置和加密平台会话存到
    `%USERPROFILE%\.workswarm-auth-cloud`，首次启动时由 wheel 内置的 profile 自动生成。
-   不用市场时：解压 Windows ZIP，双击 `Install-WorkSwarm-Auth.cmd`，再导入生成的
-   `workswarm-cloud-mcp.json`。
 3. 如果宿主有工具超时设置，首次 SSO 调用设为至少 240 秒；也可先在 PowerShell 运行下方 `cloud-login`。
 4. 调用 `auth_connect(provider="github", connection_id="github-default")`。
    首次先登录平台 OIDC，再到 GitHub 同意；后续浏览器 SSO 可免登录。整个 provider 流程须用
@@ -170,8 +167,6 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://auth.company.example/client/wo
 
 WorkSwarm 中的注意事项：
 
-- 注册自定义 MCP 时请粘贴整段 `workswarm-cloud-mcp.json`，或把命令与参数分开填写。若把整条命令
-  填进“命令”一栏、参数为空，WorkSwarm 连接前的命令存在性检查会立即失败，且日志不显示原因。
 - WorkSwarm 按会话加载 MCP：在对话输入区的扩展面板中勾选本连接器，agent 才能看到工具。
 - 连接链接只能使用一次。授权中途刷新页面会得到 `connection_link_expired_or_used`，重新调用
   `auth_connect` 即可。

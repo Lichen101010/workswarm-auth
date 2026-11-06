@@ -95,15 +95,15 @@ def test_client_release_operates_without_any_server_modules(tmp_path):
     profile.write_text(json.dumps(CloudProfile("https://broker.example", "https://issuer.example").binding))
     source = Path(__file__).resolve().parents[1]
     result = build(source, profile, tmp_path / "release")
-    with zipfile.ZipFile(result["client_zip"]) as archive:
-        modules = {Path(name).name for name in archive.namelist() if "/src/workswarm_auth/" in name}
+    with zipfile.ZipFile(result["client_wheel"]) as archive:
+        modules = {Path(name).name for name in archive.namelist() if name.startswith("workswarm_auth/")}
         assert not modules.intersection({"app.py", "config.py", "vault.py", "providers.py", "manager.py", "security.py"})
         archive.extractall(tmp_path / "client")
-    client_root = tmp_path / "client/workswarm-auth-cloud"
+    client_root = tmp_path / "client"
     code = "import sys;sys.path.insert(0,sys.argv.pop(1));from workswarm_auth.cli import main;main()"
-    base = [sys.executable, "-I", "-c", code, str(client_root / "src")]
+    base = [sys.executable, "-I", "-c", code, str(client_root)]
     home = tmp_path / "user-home"
-    initialized = subprocess.run([*base, "cloud-init", "--home", str(home), "--profile", str(client_root / "publisher/cloud.json")],
+    initialized = subprocess.run([*base, "cloud-init", "--home", str(home), "--profile", str(client_root / "workswarm_auth/publisher_profile.json")],
                                  check=True, capture_output=True, text=True)
     assert json.loads(initialized.stdout)["provider_credentials_required"] is False
     configured = subprocess.run([*base, "cloud-config", "--home", str(home)], check=True, capture_output=True, text=True)

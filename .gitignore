@@ -8,7 +8,6 @@ config.env
 vault.key
 *.sqlite3*
 acceptance-report.json
-workswarm-cloud-mcp.json
 cloud.json
 session.enc
 publisher-runtime/

@@ -375,7 +375,7 @@ def test_publisher_render_and_release_contain_no_server_secrets(tmp_path):
                 expected = base64.urlsafe_b64encode(hashlib.sha256(archive.read(name)).digest()).rstrip(b"=").decode()
                 assert digest == "sha256=" + expected
     assert not names & {f"workswarm_auth/{m}" for m in ("app.py", "config.py", "vault.py", "providers.py", "manager.py", "security.py")}
-    for name in ("client_wheel", "client_zip", "market_zip"):
+    for name in ("client_wheel", "market_zip"):
         with zipfile.ZipFile(result[name]) as archive:
             paths = archive.namelist()
             assert not any(Path(p).name in {"providers.json", "remote.json", "config.env", ".env", "vault.key", "vault.sqlite3"} for p in paths)

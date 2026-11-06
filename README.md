@@ -281,7 +281,6 @@ Keycloak 没有预置用户，也关闭了公开注册。有两种开通方式�
 |---|---|
 | `workswarm_auth-0.7.2-py3-none-any.whl` | 客户端包，放到服务器上供用户首次连接时下载 |
 | `workswarm-auth-cloud-market-0.7.2.zip` | 上架到 WorkSwarm Hub 的连接器包 |
-| `workswarm-auth-cloud-windows-0.7.2.zip` | 不用市场时的手工安装包，解压后运行 `Install-WorkSwarm-Auth.cmd` |
 
 把客户端包放到服务器上。`data/` 已归容器用户所有，所以要用 `sudo`；`client/` 目录不存在时会自动创建：
 
