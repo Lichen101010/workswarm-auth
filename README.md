@@ -1,6 +1,6 @@
 # WorkSwarm 统一授权 Connector v0.7.2
 
-仅保留一条链路：**WorkSwarm → 云端授权服务 → 第三方 API**。
+请求链路：**WorkSwarm → 云端授权服务 → 第三方 API**。
 发布者在服务器配置第三方应用，普通用户不填写第三方 Client ID、Secret 或 token。
 支持 Gmail、Google Drive、Google Calendar、GitHub、Microsoft（Outlook）、Slack，均为只读操作。
 
@@ -12,9 +12,20 @@
 |---|---|
 | 服务端 `app / manager / providers / vault / security` | 第三方 OAuth、凭证加密、刷新/撤销、账号隔离、API 验证；强制 OIDC，不接受静态 API Key |
 | 客户端 `cloud / cloud_commands / cloud_mcp / session_store` | 平台 OIDC 登录、浏览器跳转、授权等待/取消和 API 转发；仅缓存自己的平台会话，不建立凭证数据库 |
-| 发布工具 `tools/` | 生成部署配置与不含服务端代码/秘密的 Windows 安装包、市场包 |
+| 发布工具 `tools/` | 生成部署配置，以及不含服务端代码和密钥的客户端包、连接器包 |
 
-详细操作统一见 [CLOUD.md](CLOUD.md)；验证范围见 [VALIDATION.md](VALIDATION.md)。
+本文是主要操作指南。[CLOUD.md](CLOUD.md) 补充对接已有身份系统、无公网域名测试部署等细节；验证范围见 [VALIDATION.md](VALIDATION.md)。
+
+### 术语
+
+| 术语 | 含义 |
+|---|---|
+| 授权服务（Broker） | 发布者运行的服务端：处理第三方 OAuth，加密保存凭证，并代用户调用第三方 API |
+| 平台登录（OIDC 身份系统） | 确认用户身份的登录系统，可以用已有系统，也可以部署附带的 Keycloak |
+| Keycloak、realm | Keycloak 是开源登录系统；realm 是其中一组独立的用户和配置，本项目使用 `workswarm` |
+| issuer | 身份系统的地址标识，令牌中的值必须和配置一致 |
+| 客户端包（`.whl`） | 运行在用户电脑上的程序，放在授权服务上供下载 |
+| 连接器包（market zip） | 上架到 Hub 的包，写有启动命令和授权服务地址，不含客户端程序 |
 
 ## 用户如何使用
 
@@ -73,18 +84,34 @@
 以下步骤面向部署服务并上架连接器的人。源码包不含已部署的服务地址，连接器包必须用你自己的部署配置生成。
 下面的命令和域名都是示例，完整参数见 [CLOUD.md](CLOUD.md)，已验证和尚未验证的范围见 [VALIDATION.md](VALIDATION.md)。
 
+### 开发者和发布者的分工
+
+| 开发者 | 发布者 |
+|---|---|
+| 维护代码、修复 Bug、发布新版本 | 提供公网主机、域名和证书 |
+| 解答部署中的技术问题 | 创建第三方应用并完成服务商审核 |
+| | 运行服务、备份数据、管理用户账号、负责数据合规 |
+| | 构建连接器包、放置客户端包、上架到 Hub |
+
+部署或使用中遇到问题，请在本仓库提 Issue，并附上错误码和日志，发送前先去掉令牌、密钥和用户信息。
+安全问题不要写在 Issue 里，请私下联系代码所有者。开发者不需要你的 Client Secret、`vault.key` 或 `.env`。
+
 ### 准备
 
 - 一台 Linux 主机，安装 Docker Engine、Compose v2、Git 和 Python 3.11 或更高版本，能访问身份系统和第三方服务。
+  Ubuntu、Debian 还要运行 `sudo apt install python3-venv`，否则第 1 步无法创建虚拟环境。
 - 一个授权服务域名（如 `auth.company.example`），DNS 指向这台主机，80/443 对外可达。
 - 平台登录二选一：已有的 OIDC 身份系统；或再准备一个域名（如 `login.company.example`），部署附带的 Keycloak。
 - 要启用的第三方服务的开发者账号（Google、GitHub、Microsoft、Slack）。
+- 一台装有 WorkSwarm 和 Python 3.11 或更高版本（带 `py` 启动器）的 Windows，用于上架和验收。
+- 一个 WorkSwarm Hub 账号。
+- 本仓库的读取权限，向仓库所有者申请。
 
 ### 发布步骤
 
 **1. 获取源码并运行测试**
 
-把 `<仓库地址>` 换成你拿到的仓库地址，后面的命令都在这个目录下运行：
+把 `<仓库地址>` 换成你拿到的仓库地址。除非代码块里写了 `cd`，后面的命令都在这个源码目录下运行：
 
 ```bash
 git clone <仓库地址> workswarm-auth
@@ -96,6 +123,14 @@ python3 -m venv .venv
 
 **2. 生成部署配置**
 
+`--output` 指定的目录不能已存在，当前用户要对它的上级目录有写权限。`/srv` 默认只有 root 可写：主机专门用于本服务时，先把它交给当前用户；否则换一个有权限的目录，并同步替换后面命令里的路径。
+
+```bash
+sudo chown "$(id -un)" /srv
+```
+
+然后生成配置：
+
 ```bash
 .venv/bin/python tools/publisher_setup.py \
   --public-origin https://auth.company.example \
@@ -106,8 +141,6 @@ python3 -m venv .venv
 
 使用已有身份系统时，把 `--identity-domain` 换成 `--issuer`（对接要求见 CLOUD.md 第 1 节）。
 输出目录含密钥和配置，不要提交到仓库，也不要发给用户。
-
-`--output` 指定的目录不能已存在，当前用户要对它的上级目录有写权限。没有 `/srv` 的写权限时，换一个有权限的目录，并同步替换后面命令里的路径。
 
 **3. 配置第三方服务的 Client ID 和 Secret**
 
@@ -263,6 +296,7 @@ Keycloak 没有预置用户，也关闭了公开注册。有两种开通方式�
 然后在服务器上运行，工具会打印回调地址，并逐个提示输入 Client ID 和 Secret：
 
 ```bash
+cd /源码的绝对路径/workswarm-auth
 .venv/bin/python tools/configure_login_providers.py \
   --runtime /srv/workswarm-auth-runtime --providers google,github
 ```
@@ -272,6 +306,7 @@ Keycloak 没有预置用户，也关闭了公开注册。有两种开通方式�
 **6. 生成客户端包和连接器包**
 
 ```bash
+cd /源码的绝对路径/workswarm-auth
 .venv/bin/python tools/build_cloud_client.py \
   --profile /srv/workswarm-auth-runtime/cloud.json \
   --output /srv/workswarm-auth-releases/0.7.2
@@ -298,10 +333,24 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://auth.company.example/client/wo
 
 **7. 上架**
 
-发布要在 WorkSwarm 客户端里完成，客户端只能发布本机已有的连接器，所以要先把连接器包放进本机。
+连接器包生成在 Linux 主机上，先把它复制到装有 WorkSwarm 的 Windows。也可以用其他方式传输：
+
+```powershell
+scp <用户>@<主机>:/srv/workswarm-auth-releases/0.7.2/workswarm-auth-cloud-market-0.7.2.zip .
+```
+
+然后用下面任一方式发布。
+
+*方式一：在 Hub 上传 zip*
+
+在 Hub 的发布页面上传这个 zip，再按页面提示填写信息并选择发布范围（见下一节）。具体界面以 Hub 实际显示为准。
+
+*方式二：在 WorkSwarm 客户端发布*
+
+客户端只能发布本机已有的连接器，所以要先把连接器包放进本机。
 不能用“新建自定义连接器”的方式发布：客户端发布自定义连接器时只接受 `npx`、`uvx`、`python`、`python3` 启动命令，而本连接器用的是 `py`，会被拒绝。
 
-1. 在装有 WorkSwarm 的 Windows 上解压连接器包：
+1. 解压连接器包：
 
    ```powershell
    Expand-Archive .\workswarm-auth-cloud-market-0.7.2.zip -DestinationPath "$env:USERPROFILE\.jiuwenswarm\agent\workspace\mcp\mcp_hub" -Force
@@ -312,10 +361,9 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://auth.company.example/client/wo
 4. 确认发布名称、展示名称和简介。版本号沿用包内的 `0.7.2`，只能是 `1.0.0` 这样的三段数字或七位小写提交号。
 5. 选择发布范围（见下一节），提交。
 
-提交后客户端只显示“已提交”，不代表已经上架。实际状态要到 Hub 的 **我的上传** 查看。Public 发布审核通过后才会公开展示。
-再次发布时要升版本号，否则会提示该版本已提交过。
+提交后客户端只显示“已提交”，不代表已经上架。方式二根据 WorkSwarm 客户端代码整理，界面名称可能随版本变化。
 
-这些步骤根据 WorkSwarm 客户端代码整理，界面名称可能随版本变化。
+无论用哪种方式，实际状态都要到 Hub 的 **我的上传** 查看。Public 发布审核通过后才会公开展示。再次发布时要升版本号。
 
 **8. 实机验收**
 
@@ -326,7 +374,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://auth.company.example/client/wo
 
 | | 自己或小团队 | 公开发布 |
 |---|---|---|
-| WorkSwarm Hub | 可不经过 Hub，直接分发包内的 `mcp.json`，由用户粘贴添加；Private 发布的条目能否从广场安装取决于客户端版本，需先实测 | Public，需经过 Hub 审核 |
+| WorkSwarm Hub | Private。条目能否从连接器广场安装取决于客户端版本，需先实测；不能安装时，按第 7 步方式二把连接器包解压到 `mcp_hub` 目录 | Public，需经过 Hub 审核 |
 | Google | Testing 模式，需添加测试用户，授权约 7 天过期 | 需通过 OAuth 验证；Gmail、Drive 使用受限权限，通常还需第三方安全评估 |
 | Microsoft | 测试账号可用 | 通常需完成发布者验证，否则许多企业账号无法同意授权 |
 | Slack | 开发工作区可用 | 需开启 Distribution，才能安装到其他工作区 |
@@ -337,7 +385,8 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://auth.company.example/client/wo
 ### 公开发布前要确认
 
 - **准入范围**：确认自动开户是否符合预期，或改用 `--no-auto-enroll`。
-- **合规材料**：准备隐私政策和应用主页（Google 验证需要），并为代码选择许可证。
+- **合规材料**：准备隐私政策和应用主页（Google 验证需要）。
+- **使用授权**：仓库目前没有 LICENSE 文件，上架前要向代码所有者确认使用授权。
 - **下载校验**：启动器下载 wheel 时不校验哈希，依赖版本也未锁定；公开发布前应补上，或评估这一风险。
 - **数据安全**：服务端是单实例 SQLite，用户的第三方凭证加密存放其中。需要自行备份数据目录和 `secrets/vault.key`，并限制访问；两者不要放在一起备份。
 - **支持平台**：连接器目前只支持 Windows。
@@ -394,6 +443,7 @@ docker compose -f compose.yaml -f compose.identity.yaml logs --tail=100 identity
 | 现象 | 可能原因和处理 |
 |---|---|
 | 启动时提示 `Set WORKSWARM_SOURCE` 或 `Set an approved Keycloak image` | `.env` 没有填写，见第 4 步 |
+| `docker compose` 提示读取 `config/config.env` 时 `permission denied` | `config/` 已归容器用户所有，当前用户读不到。用 `sudo docker compose ...` 运行 |
 | HTTPS 打不开，`proxy` 日志显示证书申请失败 | 域名没有解析到这台主机，或 80/443 被防火墙拦截 |
 | `identity` 日志提示读取 `realm.json` 时 Permission denied | `realm.json` 权限应为 `0644`，不要改成 `0600` |
 | 访问返回 `Invalid host header` | 访问的域名和 `--public-origin` 不一致 |

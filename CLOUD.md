@@ -186,9 +186,6 @@ $p = "$env:LOCALAPPDATA\WorkSwarmAuth\0.7.2\.venv\Scripts\python.exe"
 `auth_cancel(connection_id, attempt_id)` 同样只取消当前尝试；`auth_disconnect` 才删除服务器上的
 第三方凭证并尝试撤销。`cloud-logout` 只删除本机平台会话；不删除已连接的第三方账号。
 
-没有发布者公共 profile 的源码包直接运行安装器会明确失败。旧本机模式、`--local`、
-静态 API Key 和本机第三方 token 导入已移除；开发和测试也使用云端 OIDC 路径。
-
 ## 5a. 平台账号：用 Google / GitHub 登录并自动开户（自带 Keycloak 时）
 
 默认需要管理员在 Keycloak 为每个用户建账号并加入 `workswarm-users`。启动服务后，可让用户直接用
