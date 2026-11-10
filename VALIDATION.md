@@ -39,4 +39,4 @@
 - Microsoft 没有吊销接口，断开时返回手动撤销链接。
 - GitHub 断开只吊销本连接的令牌；同一 App 的其他授权仍在时，再次连接可能不出现 Authorize 页。
 
-部署与验收步骤见 [CLOUD.md](CLOUD.md)。
+部署与验收步骤见 [发布指南](docs/PUBLISHING.md)。
